@@ -27,7 +27,7 @@ const CuisineRestaurants = () => {
   useEffect(() => {
     const fetchRestaurants = async () => {
       try {
-        const response = await axios.get(`http://localhost:8080/api/restaurants-by-tag`, {
+        const response = await axios.get(`https://backend-05of.onrender.com/api/restaurants-by-tag`, {
           params: { tag: cuisineName },
         });
 
