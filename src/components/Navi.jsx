@@ -349,6 +349,10 @@ const MapComponent = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [currentFloor, setCurrentFloor] = useState(1);
   const [showFloorSelector, setShowFloorSelector] = useState(false);
+  const [destinationFloor, setDestinationFloor] = useState(null);
+  const [showNextButton, setShowNextButton] = useState(false);
+  const [pathToDestination, setPathToDestination] = useState(null);
+  const [transitionNodeEnd, setTransitionNodeEnd] = useState(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const shopNames = Object.keys(shopCoordinates);
@@ -361,6 +365,27 @@ const MapComponent = () => {
     }
     return coordinates;
   };
+
+  // Add this function to get floor number from coordinates
+  const getFloorFromCoordinates = (coordinates) => {
+    const [x, y, z] = coordinates.split(",").map(Number);
+    return z;
+  };
+
+  // Update destination floor when endNode changes
+  useEffect(() => {
+    if (endNode) {
+      try {
+        const coordinates = getCoordinatesFromShopName(endNode);
+        const floor = getFloorFromCoordinates(coordinates);
+        setDestinationFloor(floor);
+      } catch (error) {
+        setDestinationFloor(null);
+      }
+    } else {
+      setDestinationFloor(null);
+    }
+  }, [endNode]);
 
   const mapConfigs = [
     {
@@ -604,32 +629,38 @@ const MapComponent = () => {
         });
         animateTrailGradientAndDashed(firstFloorCoords);
 
-        // After reaching transition node, calculate path to destination
-        setTimeout(() => {
-          // Use the same transition node coordinates but with destination floor's z-value
-          const transitionNodeEnd = `${startFloorTransition.x},${startFloorTransition.y},${endZ}`;
-          console.log('Transition node end:', transitionNodeEnd);
-          
-          const pathFromTransition = aStar(graph, transitionNodeEnd, endCoordinates);
-          console.log('Path from transition:', pathFromTransition);
+        // Store the transition node and path to destination for later use
+        const transitionNodeEnd = `${startFloorTransition.x},${startFloorTransition.y},${endZ}`;
+        const pathFromTransition = aStar(graph, transitionNodeEnd, endCoordinates);
+        
+        if (!pathFromTransition) {
+          alert("No path from transition node to destination found!");
+          return;
+        }
 
-          if (!pathFromTransition) {
-            alert("No path from transition node to destination found!");
-            return;
-          }
-
-          handleMapChange(endZ);
-          vectorLayer.getSource().clear();
-          const secondFloorCoords = pathFromTransition.map((node) => {
-            const [x, y, z] = node.split(",").map(Number);
-            const correctedX = x + (y > 800 ? 3 : 0);
-            return [correctedX, y, z];
-          });
-          animateTrailGradientAndDashed(secondFloorCoords);
-        }, 10000);
+        setTransitionNodeEnd(transitionNodeEnd);
+        setPathToDestination(pathFromTransition);
+        setShowNextButton(true);
       }
     } catch (error) {
       alert(error.message);
+    }
+  };
+
+  // Handle next button click for multi-floor navigation
+  const handleNextClick = () => {
+    if (pathToDestination && transitionNodeEnd) {
+      handleMapChange(destinationFloor);
+      vectorLayer.getSource().clear();
+      const secondFloorCoords = pathToDestination.map((node) => {
+        const [x, y, z] = node.split(",").map(Number);
+        const correctedX = x + (y > 800 ? 3 : 0);
+        return [correctedX, y, z];
+      });
+      animateTrailGradientAndDashed(secondFloorCoords);
+      setShowNextButton(false);
+      setPathToDestination(null);
+      setTransitionNodeEnd(null);
     }
   };
 
@@ -645,7 +676,7 @@ const MapComponent = () => {
               fontWeight: 'bold',
             }}
           >
-             NAVIGATION SYSTEM
+            INDOOR NAVIGATION SYSTEM
           </Typography>
           <Tooltip title="Help">
             <IconButton onClick={() => setShowHelp(!showHelp)} color="primary">
@@ -689,7 +720,7 @@ const MapComponent = () => {
               <TextField
                 {...params}
                 label="Start Shop"
-                placeholder="Enter shop name"
+            placeholder="Enter shop name"
                 variant="outlined"
                 size="small"
                 InputProps={{
@@ -720,7 +751,7 @@ const MapComponent = () => {
               <TextField
                 {...params}
                 label="End Shop"
-                placeholder="Enter shop name"
+            placeholder="Enter shop name"
                 variant="outlined"
                 size="small"
                 InputProps={{
@@ -763,6 +794,57 @@ const MapComponent = () => {
             )}
           </Button>
         </Box>
+
+        {destinationFloor && (
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              mb: 2,
+              p: 1,
+              bgcolor: '#e3f2fd',
+              borderRadius: 1
+            }}
+          >
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                color: '#1a237e',
+                fontWeight: 'medium',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}
+            >
+              <LocationOnIcon color="primary" />
+              Destination is on Floor {destinationFloor}
+            </Typography>
+          </Box>
+        )}
+
+        {showNextButton && (
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              mb: 2
+            }}
+          >
+            <Button
+              variant="contained"
+              onClick={handleNextClick}
+              startIcon={<LocationOnIcon />}
+              sx={{
+                background: 'linear-gradient(45deg, #1a237e 30%, #283593 90%)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #283593 30%, #1a237e 90%)',
+                },
+              }}
+            >
+              Continue to Floor {destinationFloor}
+            </Button>
+          </Box>
+        )}
 
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
           <Button
