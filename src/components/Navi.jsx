@@ -20,19 +20,17 @@ import SearchIcon from '@mui/icons-material/Search';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import Autocomplete from '@mui/material/Autocomplete';
-import graphData from '../data/graphData.json';
 
-// Replace the inline graph definition with
-const graph = graphData;
 
 
 // A* Pathfinding Algorithm
-
 const heuristic = (a, b) => {
   const [x1, y1] = a.split(",").map(Number);
   const [x2, y2] = b.split(",").map(Number);
   return Math.hypot(x2 - x1, y2 - y1);
 };
+
+
 
 const aStar = (graph, start, end) => {
   const openSet = [start];
@@ -79,8 +77,6 @@ const aStar = (graph, start, end) => {
   }
   return null;
 };
-
-
 
 // Define transition nodes (elevators/escalators) for each floor
 const transitionNodes = {
@@ -337,7 +333,22 @@ const shopCoordinates = {
 "Buiseness Longue":"2527,1523,3",
 };
 
-const MapComponent = () => {
+const MapComponents = () => {
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.zoom = "90%"; // Set zoom level to 80%
+    return () => {
+      document.body.style.zoom = "100%"; // Reset on component unmount
+    };
+  }, []);
+
+  const [graph, setGraph] = useState({});
+  const [isGraphLoading, setIsGraphLoading] = useState(true);
+  const [graphError, setGraphError] = useState(null);
   const mapRef = useRef(null);
   const [activeMap, setActiveMap] = useState(1);
   const [vectorLayer, setVectorLayer] = useState(null);
@@ -356,6 +367,40 @@ const MapComponent = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const shopNames = Object.keys(shopCoordinates);
+
+  // Fetch graph data from backend
+  useEffect(() => {
+    const fetchGraphData = async () => {
+      try {
+        console.log('Fetching graph data from API...');
+        const response = await fetch('https://backend-saia.onrender.com/api/graph');
+        console.log('API Response status:', response.status);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('Graph data received:', {
+          nodeCount: data ? Object.keys(data).length : 0,
+          sampleNode: data ? Object.keys(data)[0] : null
+        });
+        
+        setGraph(data);
+        setIsGraphLoading(false);
+        setGraphError(null);
+        console.log('Graph data successfully set to state');
+      } catch (error) {
+        console.error('Error fetching graph data:', error);
+        setGraphError(error.message);
+        setSnackbarMessage('Failed to load navigation data: ' + error.message);
+        setSnackbarOpen(true);
+        setIsGraphLoading(false);
+      }
+    };
+
+    fetchGraphData();
+  }, []);
 
   // Add this function to get coordinates from shop name
   const getCoordinatesFromShopName = (shopName) => {
@@ -569,6 +614,18 @@ const MapComponent = () => {
 
   //calculate and display path
   const calculatePath = async () => {
+    if (isGraphLoading) {
+      setSnackbarMessage("Please wait while navigation data is loading...");
+      setSnackbarOpen(true);
+      return;
+    }
+
+    if (Object.keys(graph).length === 0) {
+      setSnackbarMessage("Navigation data not available. Please try refreshing the page.");
+      setSnackbarOpen(true);
+      return;
+    }
+
     if (!startNode || !endNode) {
       setSnackbarMessage("Please enter both start and end points");
       setSnackbarOpen(true);
@@ -590,7 +647,8 @@ const MapComponent = () => {
         setIsLoading(false);
 
         if (!path) {
-          alert("No path found!");
+          setSnackbarMessage("No path found between the selected locations!");
+          setSnackbarOpen(true);
           return;
         }
 
@@ -615,7 +673,8 @@ const MapComponent = () => {
         console.log('Path to transition:', pathToTransition);
 
         if (!pathToTransition) {
-          alert("No path to transition node found!");
+          setSnackbarMessage("No path to transition node found!");
+          setSnackbarOpen(true);
           return;
         }
 
@@ -634,7 +693,8 @@ const MapComponent = () => {
         const pathFromTransition = aStar(graph, transitionNodeEnd, endCoordinates);
         
         if (!pathFromTransition) {
-          alert("No path from transition node to destination found!");
+          setSnackbarMessage("No path from transition node to destination found!");
+          setSnackbarOpen(true);
           return;
         }
 
@@ -643,7 +703,8 @@ const MapComponent = () => {
         setShowNextButton(true);
       }
     } catch (error) {
-      alert(error.message);
+      setSnackbarMessage(error.message);
+      setSnackbarOpen(true);
     }
   };
 
@@ -665,8 +726,41 @@ const MapComponent = () => {
   };
 
   return (
-    <Container maxWidth="xl">
-      <Paper elevation={3} sx={{ p: 3, my: 4, borderRadius: 2 }}>
+    <Container 
+      maxWidth="xl" 
+      sx={{ 
+        height: '100vh',
+        overflowY: 'auto',
+        py: 0,
+        mt: 0,
+        pt: 2
+      }}
+    >
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: 3, 
+          my: 2, 
+          borderRadius: 2,
+          minHeight: 'min-content'
+        }}
+      >
+        {/* Add loading indicator for graph data */}
+        {isGraphLoading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <CircularProgress size={24} />
+            <Typography sx={{ ml: 2 }}>Loading navigation data...</Typography>
+          </Box>
+        )}
+
+        {graphError && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <Alert severity="error" sx={{ width: '100%' }}>
+              {graphError}
+            </Alert>
+          </Box>
+        )}
+
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Typography 
             variant="h4" 
@@ -720,7 +814,7 @@ const MapComponent = () => {
               <TextField
                 {...params}
                 label="Start Shop"
-            placeholder="Enter shop name"
+                placeholder="Enter shop name"
                 variant="outlined"
                 size="small"
                 InputProps={{
@@ -735,7 +829,7 @@ const MapComponent = () => {
               />
             )}
             renderOption={(props, option) => (
-              <li {...props} style={{ padding: '8px 16px' }}>
+              <li {...props} key={option}>
                 {option}
               </li>
             )}
@@ -751,7 +845,7 @@ const MapComponent = () => {
               <TextField
                 {...params}
                 label="End Shop"
-            placeholder="Enter shop name"
+                placeholder="Enter shop name"
                 variant="outlined"
                 size="small"
                 InputProps={{
@@ -766,7 +860,7 @@ const MapComponent = () => {
               />
             )}
             renderOption={(props, option) => (
-              <li {...props} style={{ padding: '8px 16px' }}>
+              <li {...props} key={option}>
                 {option}
               </li>
             )}
@@ -879,7 +973,11 @@ const MapComponent = () => {
             width: '100%', 
             height: isMobile ? '400px' : '500px',
             overflow: 'hidden',
-            borderRadius: 2
+            borderRadius: 2,
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+            mb: 2
           }}
         >
           <div id="map" style={{ width: "100%", height: "100%" }}></div>
@@ -900,4 +998,4 @@ const MapComponent = () => {
   );
 };
 
-export default MapComponent;
+export default MapComponents;
